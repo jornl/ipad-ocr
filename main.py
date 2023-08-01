@@ -26,6 +26,9 @@ folder_path = "./agreements"
 # Initialize an empty list to store the CSV files
 serial_numbers = []
 
+# Initialize an empty set to store invalid serial number reads.
+invalid_serial_numbers = set()
+
 # Initialize an empty set to store the matched serial numbers
 matched_serial_numbers = set()
 
@@ -57,6 +60,7 @@ def load_serial_numbers():
 
 # Function to extract the serial number from the recognized text
 def extract_serial_number(text):
+    global invalid_serial_numbers
     # Define a regular expression pattern to match the serial number
     pattern = r'Serial([:,.])?\s?([A-Z0-9]{12})'
 
@@ -77,42 +81,51 @@ def extract_serial_number(text):
         # Check if the recognized serial number matches against the CSV files
         for entry in serial_numbers:
             file_name, entry_serial_number = entry.split(", ")
-            if serial_number == entry_serial_number: #and serial_number not in matched_serial_numbers:
+            if serial_number == entry_serial_number:
                 print(f"\033[1;32mSerienummer funnet: {serial_number} i filen {file_name}\033[0m")
                 file_path = os.path.join(folder_path, file_name)
-                  # Check if the serial number already has a school and a status
-                existing_status, existing_school = get_existing_school_and_status(file_path, serial_number)
 
-                if existing_school and existing_status:
-                    print(f"Serienummer \033[1;32m{serial_number}\033[0m finnes allerede med følgende verdier:")
-                    print(f"Skole: \033[1;32m{existing_school}\033[0m")
-                    print(f"Status: \033[1;32m{existing_status}\033[0m")
+                if serial_number not in invalid_serial_numbers:
+                    confirm_serial = input(f"Stemmer \033[1;32m{serial_number}\033[0m med serienummeret på enheten? [y/n]: ")
+                    if confirm_serial.lower() == 'y':
+                        invalid_serial_numbers = set()
+                        # Check if the serial number already has a school and a status
+                        existing_status, existing_school = get_existing_school_and_status(file_path, serial_number)
 
-                    update_choice = input("Ønsker du å oppdatere verdiene? [y/n] (Standard: n): ")
-                    if update_choice.lower() == "y":
-                        status = input_status()
-                        school = input_school()
+                        if existing_school and existing_status:
+                            print(f"Serienummer \033[1;32m{serial_number}\033[0m finnes allerede med følgende verdier:")
+                            print(f"Skole: \033[1;32m{existing_school}\033[0m")
+                            print(f"Status: \033[1;32m{existing_status}\033[0m")
+
+                            update_choice = input("Ønsker du å oppdatere verdiene? [y/n] (Standard: n): ")
+                            if update_choice.lower() == "y":
+                                status = input_status()
+                                school = input_school()
+                                
+                                update_csv_file(file_path, serial_number, status, school)
+                                #matched_serial_numbers.add(serial_number)
+                                winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
+                                sleep(2)
+                                return
+                            else:
+                                update_csv_file(file_path, serial_number, existing_status, existing_school)
+                                winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
+                                sleep(2)
+                                return
+                        else:
+                            # Prompt the user for the status value
+                            status = input_status()
+                            school = input_school()
                         
-                        update_csv_file(file_path, serial_number, status, school)
-                        #matched_serial_numbers.add(serial_number)
-                        winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
-                        sleep(2)
-                        return
+                            
+                            update_csv_file(file_path, serial_number, status, school)
+                            #matched_serial_numbers.add(serial_number)
+                            winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
+                            sleep(2)
+
                     else:
-                        update_csv_file(file_path, serial_number, existing_status, existing_school)
-                        winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
-                        sleep(2)
-                        return
-                else:
-                    # Prompt the user for the status value
-                    status = input_status()
-                    school = input_school()
-                  
-                    
-                    update_csv_file(file_path, serial_number, status, school)
-                    #matched_serial_numbers.add(serial_number)
-                    winsound.Beep(1000, 100)  # Play a beep sound (1000 Hz for 100 ms)
-                    sleep(2)
+                        print(f"{serial_number} lagt til midlertidig karanteneliste")
+                        invalid_serial_numbers.add(serial_number)
 
 def get_existing_school_and_status(file_path, serial_number):
     with csv_lock:
@@ -153,6 +166,14 @@ def update_csv_file(file_path, serial_number, status, school):
                         row[3] = school
                     else:
                         row.append(school)
+
+                    if len(row) >= 5 and row[4]:
+                        if row[4] != "Ja":
+                            row[4] = "Ja"
+                    elif len(row) < 5:
+                        row.append("Ja")
+                    
+                    
                                         
                     # Extract the date from the filename
                     date_match = re.search(r"_(\d{2}-\d{2}-\d{2})\.csv", file_path)
